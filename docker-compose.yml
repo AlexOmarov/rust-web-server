@@ -1,0 +1,57 @@
+services:
+
+  app:
+    build:
+      context: .
+    environment:
+      APP_NAME: "news-service"
+
+      DB_HOST: "db"
+      OLLAMA_HOST: "ollama"
+
+      MODEL: "deepseek-r1:14b"
+      SCHEDULING_ENABLED: "true"
+
+      PROJECT_BOT: "${PROJECT_BOT}"
+      PROJECT_CHAT: "${PROJECT_CHAT}"
+    ports:
+      - "8080:8080"
+      - "9010:9010"
+    depends_on:
+      - db
+      - ollama
+    volumes:
+      - jfr:/var/jfr
+      - dumps:/var/dumps
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: news_service
+      POSTGRES_USER: news_service
+      POSTGRES_DB: news_service
+    ports:
+      - "5433:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+
+  ollama:
+    image: ollama/ollama:0.6.7
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/var/lib/ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ "gpu" ]
+
+volumes:
+  ollama:
+  db:
+  jfr:
+  dumps:
