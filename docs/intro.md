@@ -3,5 +3,5 @@ sidebar_position: 1
 slug: /
 ---
 
-# News Service
+# Rust Service
 IT WORKS!

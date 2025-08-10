@@ -1,32 +1,42 @@
-# This is a Dockerfile for building a Docker image for the service.
-# The service itself is built by gradle and the result is copied into the image.
-# The image is based on a runtime-only Liberica JDK image.
-# Runs with custom user, exposes main and jmx ports.
-# Uses /var/jfr and /var/dumps folders for storing profiling data and heap dumps.
+# Этап сборки
+FROM rust:1.75-alpine AS builder
 
-FROM bellsoft/liberica-runtime-container:jre-21-slim-glibc
+WORKDIR /app
 
-RUN addgroup --system --gid 800 appuser && adduser --system --uid 800 appuser && \
-    mkdir /var/jfr && mkdir /var/dumps && chown -R appuser:appuser /var/jfr /var/dumps
+# Копируем файлы зависимостей
+COPY Cargo.toml Cargo.lock ./
 
-USER appuser
+# Создаем пустой main.rs для кэширования зависимостей
+RUN mkdir src && echo "fn main() {}" > src/main.rs
 
-COPY app/build/libs/ /
-COPY tdlib/ /usr/lib
-COPY jfr/ /var/jfr
+# Собираем зависимости
+RUN cargo build --release
 
-EXPOSE 8080 9010
+# Копируем исходный код
+COPY src/ ./src/
 
-ENTRYPOINT ["java", \
-    "-XX:StartFlightRecording:filename=/var/jfr/data.jfr,name=NewsServiceProfiling,delay=10s,dumponexit=true,maxsize=500M,maxage=30m,disk=true,settings=/var/jfr/profile.jfc", \
-    "-XX:FlightRecorderOptions:repository=/var/jfr", \
-    "-XX:+HeapDumpOnOutOfMemoryError", \
-    "-XX:HeapDumpPath=/var/dumps", \
-    "-Dcom.sun.management.jmxremote", \
-    "-Dcom.sun.management.jmxremote.port=9010", \
-    "-Dcom.sun.management.jmxremote.rmi.port=9010", \
-    "-Dcom.sun.management.jmxremote.local.only=false", \
-    "-Dcom.sun.management.jmxremote.authenticate=false", \
-    "-Dcom.sun.management.jmxremote.ssl=false", \
-    "-Djava.rmi.server.hostname=0.0.0.0", \
-    "-jar", "/app.jar"]
+# Собираем приложение
+RUN cargo build --release
+
+# Этап запуска
+FROM alpine:latest
+
+# Устанавливаем необходимые пакеты
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Копируем собранное приложение
+COPY --from=builder /app/target/release/rust-web-server .
+
+# Создаем пользователя для безопасности
+RUN addgroup -g 1001 -S rust && \
+    adduser -S rust -u 1001
+
+USER rust
+
+# Открываем порт
+EXPOSE 8080
+
+# Запускаем приложение
+CMD ["./rust-web-server"]
